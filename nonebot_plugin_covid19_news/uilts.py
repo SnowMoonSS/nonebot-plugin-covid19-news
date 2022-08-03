@@ -70,12 +70,6 @@ async def send_msg(
         event: Union[MessageEvent, int],
         message: Union[str, Message, List],
 ):
-
-    if event.message_type == 'group':
-        if not isinstance(message, list):
-            message = [message]
         if SEND_IMAGE:
             message = [text2image(msg) for msg in message]
-        await send_forward_msg_group(bot, event.group_id, message)
-    else:
         await bot.send(event=event, message=message)
