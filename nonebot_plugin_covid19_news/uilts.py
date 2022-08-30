@@ -67,24 +67,9 @@ def text2image(text: str) -> Message:
 
 async def send_msg(
         bot: Bot,
-        event: MessageEvent,
+        event: Union[MessageEvent, int],
         message: Union[str, Message, List],
 ):
-
-    message = message if isinstance(message, list) else [message]
-
-    if event.message_type == 'group':
-        try:
-            if SEND_IMAGE:
-                await send_forward_msg_group(bot, event.group_id, [text2image(msg) for msg in message])
-            else:
-                await send_forward_msg_group(bot, event.group_id, message)
-        except ActionFailed as e:
-            logger.error(e)
-            await bot.send(event=event, message="群发消息失败, 账号可能风控")
-    else:
-        for msg in message:
-            if SEND_IMAGE:
-                await bot.send(event=event, message=text2image(msg))
-            else:
-                await bot.send(event=event, message=msg)
+        if SEND_IMAGE:
+            message = [text2image(msg) for msg in message]
+        await bot.send(event=event, message=message)
