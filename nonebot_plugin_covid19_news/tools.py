@@ -1,68 +1,81 @@
 import requests
 from typing import Dict
+import time
+from datetime import datetime
+import re
 
 
 class Area():
     def __init__(self, data):
-        self.name = data['name']
-        self.today = data['today']
-        self.total = data['total']
-        self.grade = data['total'].get('grade', '风险未确认')
-        self.isUpdated = self.today['isUpdated'] # 是否推送
-        wzz_add = data['today'].get('wzz_add')
-        self.wzz_add = int(wzz_add) if wzz_add else 0
-        self.all_add = self.today['confirm'] + self.wzz_add
-        self.children = data.get('children', None)
+
+        def to_int(data):
+            return int(data) if data else 0
+     
+        self.name = data['city'] if data.get('city') else data['area']
+        self.confirmed_relative = to_int(data.get('confirmedRelative'))          # 新增确诊
+        self.native_relative = to_int(data.get('nativeRelative'))                # 本土新增
+        self.wzz_add = to_int(data.get('asymptomaticRelative'))                  # 新增无症状
+        self.local_wzz_add = to_int(data.get('asymptomaticLocalRelative'))       # 新增本土无症状
+        self.cur_confirm = to_int(data.get('curConfirm')  )                      # 现有确诊    
+        self.all_add = self.confirmed_relative + self.wzz_add
+        self.time = float(data.get('updateTime'))
+        self.isUpdated = True
         if self.all_add == 0:
             self.isUpdated = False
 
 
     @property
+    def update_time(self):
+        return datetime.fromtimestamp(self.time).strftime('%Y-%m-%d %H:%M')
+
+    @property
     def main_info(self):
-        update = {True: '', False: '（未更新）'}
-        return (f"{self.name}{update[self.today['isUpdated']]}\n新增确诊: {self.today['confirm']}\n新增无症状: {self.wzz_add}")
+        return (f"{self.name} {self.update_time}\n新增确诊: {self.confirmed_relative}\n新增无症状: {self.wzz_add}\n现有确诊: {self.cur_confirm}")
+
+    def today_update(self):
+        dt = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d')
+        timeArray = time.strptime(dt, "%Y-%m-%d") # 0点时间戳
+        return self.time >= time.mktime(timeArray)
 
     def __eq__(self, obj):
-        return (isinstance(obj, Area) and self.today == obj.today)
+        return (isinstance(obj, Area) and self.all_add == obj.all_add)
+
 
 
 class AreaList(Dict):
     def add(self, data):
         if self.get(data.name) != data:
             self[data.name] = data
+            
+    def get_data(self,name):
+        if name[-1] in ['市', '省']:
+            name = name[:-1]
+        return self.get(name)
 
     
 class NewsData:
     def __init__(self):
         self.data = AreaList()
-        self.time = ''
         self.update_data()
 
     def update_data(self):
-        url="https://api.inews.qq.com/newsqa/v1/query/inner/publish/modules/list?modules=statisGradeCityDetail,diseaseh5Shelf"
-        res = requests.get(url)
-        assert res.status_code == 200
-        data = res.json()['data']['diseaseh5Shelf']
+        url = 'https://voice.baidu.com/act/newpneumonia/newpneumonia/?from=osari_aladin_banner'
+        response = requests.get(url)
+        html_data = response.text
+        json_str = re.findall('"component":\[(.*)\],', html_data)[0]
+        null = None
+        json_dict = eval(json_str)
+        data = json_dict['caseList']
 
-
-        if data['lastUpdateTime'] != self.time:
+      
+        for area in data:
             
-            self.time = data['lastUpdateTime']
-            def get_Data(data):
-                
-                if isinstance(data, list):
-                    for i in data:
-                        get_Data(i)
+            self.data.add(Area(area))
+            for city in area.get("subList",[]):
+                self.data.add(Area(city))
 
-                if isinstance(data, dict):
-                    area_ = data.get('children')
-                    if area_:
-                        get_Data(area_)
 
-                    self.data.add(Area(data))
-
-            get_Data(data['areaTree'][0])
-            return True
+        return True
 
 
 NewsBot = NewsData()
